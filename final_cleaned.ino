@@ -154,8 +154,6 @@ void loop() {
     case 0:
       if (startButtonPressedChecker()) {
         startPressedAtIdleService();
-        // startButtonPressed = false;
-        // state = 1;
       }
       break;
       
@@ -167,18 +165,9 @@ void loop() {
       }
 
       calibrationStateService();
-//      rotateStepper(&stepperX, calibrateMovePosition);
-//      rotateStepper(&stepperY, calibrateMovePosition);
 
       if (LimitSwitchChecker('s')) {
         limitSwitchesReachedService();
-//        reachedLimitX = false;
-//        reachedLimitY = false;
-//        calibrateStepper(&stepperX);
-//        calibrateStepper(&stepperY);
-//        state = 2;
-//        delayMicroseconds(1000000);
-        
       } else {
         if (LimitSwitchChecker('x')) {
           calibrateStepper(&stepperX);
@@ -197,40 +186,16 @@ void loop() {
       }
 
       if (doneWithPatternChecker()) {
-//        Serial.println("Done with pattern");
-//        currentStep = 0;
-//        state = 0;
         doneWithPatternService();
       }
       
       moveXYService();
-      // rotateStepper(&stepperX, x_pattern[currentStep]);
-      // rotateStepper(&stepperY, y_pattern[currentStep]);
 
       if (atTargetXYChecker(&stepperX, &stepperY)) {
-//      if (!stepperX.isRunning() & !stepperY.isRunning()) {
         atTargetXYService();
-//        stepperX.stop();
-//        stepperY.stop();
-//        delayMicroseconds(10000);
-//        state = 3;
       }
       break;
 
-//    // Post-calibration, pre-motion (Idle 2) (unimplemented)
-//    case 11: 
-//      // E-Stop
-////      if (startButtonPressedChecker()) {
-////        startButtonPressed = false;
-////        state = 0;
-////      }
-//      
-//      // Idle until button is pressed again 
-//      if (startButtonPressedChecker()) {
-//        startButtonPressed = false;
-//        state = 2;
-//      }
-    
     //////////////////////////////////////////
     /////// CASE 3, 4, 5: PLACE DOMINO ///////
     //////////////////////////////////////////
@@ -242,13 +207,9 @@ void loop() {
         eStopService();
       }
       
-//      myServo_rotation.write(rot_pattern[currentStep]);
       rotateServo(&myServo_rotation, rot_pattern[currentStep]);
       if (placerRotCompleteChecker()) {
         placerRotCompleteService();
-        // servoRotComplete = false;
-        // state = 4;
-        // timerRestart(timer);
       }
       break;
       
@@ -259,14 +220,10 @@ void loop() {
         eStopService();
       }
       
-//      myServo_chute.write(180);
       rotateServo(&myServo_chute, servoExtended_chute);
     
       if (chuteRotCompleteChecker()) {
         chuteRotCompleteService();
-        // servoRotComplete = false;
-        // state = 5;
-        // timerRestart(timer);
       }
       break;
     
@@ -279,7 +236,6 @@ void loop() {
 
       rotateServo(&myServo_pusher, servoExtended_pusher);
       
-//      myServo_pusher.write(180);
       if (pusherRotCompleteChecker()) {
         pusherRotCompleteService();
       }
@@ -298,12 +254,8 @@ void loop() {
       }
 
       rotateServo(&myServo_chute, servoHome_chute);
-//      myServo_chute.write(0);
       if (chuteReturnCompleteChecker()) {
         chuteReturnCompleteService();
-        // servoRotComplete = false;
-        // state = 9;
-        // timerRestart(timer);
       }
       break;
       
@@ -313,14 +265,10 @@ void loop() {
       if (startButtonPressedChecker()) {
         eStopService();
       }
-//      myServo_rotation.write(0);
       rotateServo(&myServo_rotation, servoHome_rotation);
       
       if (placerReturnCompleteChecker()) {
         placerReturnCompleteService();
-        // servoRotComplete = false;
-        // state = 10;
-        // timerRestart(timer);
       }
       break;
 
@@ -331,19 +279,16 @@ void loop() {
         eStopService();
       }
       
-//      myServo_pusher.write(0);
       rotateServo(&myServo_pusher, servoHome_pusher);
       if (pusherReturnCompleteChecker()) {
         pusherReturnCompleteService();
-        // servoRotComplete = false;
-        // currentStep += 1;
+
         if (stackNeedsRefillChecker()) {
           stackNeedsRefillService();
-          // stackNeedsRefill = false;
-          // state = 6;
+
         } else {
           stackDoesNotNeedRefillService();
-          // state = 2;
+
         }
       }
       break;
@@ -355,8 +300,7 @@ void loop() {
 
       if (startButtonPressedChecker()) {
         doneRefillService();
-        // startButtonPressed = false;
-        // state = 2;
+
       }
 
       break;
@@ -366,8 +310,7 @@ void loop() {
       Serial.println("Error");
       if (startButtonPressedChecker()){
         errorStateOverService();
-        // startButtonPressed = false;
-        // state = 0;
+
       }
       break;
   }
