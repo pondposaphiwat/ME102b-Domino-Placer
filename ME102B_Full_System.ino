@@ -17,32 +17,46 @@
 
 // Switches
 #define BTN 27   
-#define limitX 34       //A2
-#define limitY 39       //A3
+#define limitX 39       //A2
+#define limitY 34       //A3
 
 // Ultrasonic sensor
-#define trigPin 23
-#define echoPin 22
+#define trigPin 22
+#define echoPin 23
 
 // Servo timer Init
 hw_timer_t * timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Constants
-const int refillThreshold = 600;
-const int calibrateMovePosition = 3000;
-const int refillPosition = 100;
+const int refillThreshold = 1000;
+const int calibrateMovePosition = -10000;
 
-const int servoHome_chute = 120;
-const int servoHome_rotation = 1;
-const int servoHome_pusher = 0;
+const float step2inch = 1.5/400; //multiply by this value to go from motor steps to inches
+const float inch2step = 400/1.5; //multiply by this value to go from inches to motor steps
 
-const int servoExtended_chute = 180;
-const int servoExtended_pusher = 180;
+const int MAX_X_length = 22; //inches
+const int MAX_Y_length = 16; //inches
+
+const int MAX_X_steps = MAX_X_length*inch2step;
+const int MAX_Y_steps = MAX_Y_length*inch2step;
+
+const int refillPositionX = 20;
+const int refillPositionY = MAX_Y_steps/2;
+
+const int servoHome_chute = 60;
+const int servoHome_rotation = 179;
+const int servoHome_pusher = 180;
+
+const int servoExtended_chute = 0;
+const int servoExtended_pusher = 30;
 
 // Initialize variables (flags)
+volatile bool firstMoveCall = true;
+
 volatile bool reachedLimitX = false;
 volatile bool reachedLimitY = false;
+
 volatile bool startButtonPressed = false;
 bool stackNeedsRefill = false;
 
@@ -94,7 +108,7 @@ void IRAM_ATTR onTime() {
 void TimerInterruptInit() {
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTime, true);
-  timerAlarmWrite(timer, 3000000, true);
+  timerAlarmWrite(timer, 2000000, true);
   timerAlarmEnable(timer);
 }
 
@@ -106,14 +120,14 @@ void setup() {
   pinMode(limitX, INPUT);
   pinMode(limitY, INPUT);
   attachInterrupt(BTN, isr_init, RISING);
-  attachInterrupt(limitX, isr_limit_x, RISING);
-  attachInterrupt(limitY, isr_limit_y, RISING);
+  attachInterrupt(limitX, isr_limit_x, FALLING);
+  attachInterrupt(limitY, isr_limit_y, FALLING);
   
   // Stepper Setup
-  stepperX.setMaxSpeed(200);
+  stepperX.setMaxSpeed(250);
   stepperX.setAcceleration(30);
 
-  stepperY.setMaxSpeed(200);
+  stepperY.setMaxSpeed(250);
   stepperY.setAcceleration(30);
 
   // Servo Setup
@@ -141,17 +155,18 @@ void setup() {
 
 void loop() {
   // State checker
-  Serial.print("  Current step: ");
-  Serial.print(currentStep);
-  Serial.print(";  State: ");
-  Serial.print(state);
-  Serial.println(';');
+//  Serial.print("  Current step: ");
+//  Serial.print(currentStep);
+  Serial.print("State: ");
+  Serial.println(state);
+
 
   // put your main code here, to run repeatedly:
   switch (state) {
     
     // Idle
     case 0:
+      idleStateService();
       if (startButtonPressedChecker()) {
         startPressedAtIdleService();
       }
@@ -164,7 +179,14 @@ void loop() {
         eStopService();
       }
 
-      calibrationStateService();
+      // Run motors
+      calibrationRun();
+      
+      // Calibrate Once
+      if(firstMoveCallChecker())
+        calibrationStateService();
+
+      firstMoveCallFalseService();
 
       if (LimitSwitchChecker('s')) {
         limitSwitchesReachedService();
@@ -176,6 +198,7 @@ void loop() {
           calibrateStepper(&stepperY);
         }
       }
+      
       break;
 
     // Move XY
@@ -188,12 +211,14 @@ void loop() {
       if (doneWithPatternChecker()) {
         doneWithPatternService();
       }
-      
+
       moveXYService();
+      firstMoveCallFalseService();
 
       if (atTargetXYChecker(&stepperX, &stepperY)) {
         atTargetXYService();
       }
+      
       break;
 
     //////////////////////////////////////////
@@ -208,6 +233,7 @@ void loop() {
       }
       
       rotateServo(&myServo_rotation, rot_pattern[currentStep]);
+      
       if (placerRotCompleteChecker()) {
         placerRotCompleteService();
       }
@@ -233,7 +259,7 @@ void loop() {
       if (startButtonPressedChecker()) {
         eStopService();
       }
-
+      
       rotateServo(&myServo_pusher, servoExtended_pusher);
       
       if (pusherRotCompleteChecker()) {
@@ -296,11 +322,13 @@ void loop() {
    
     // Refill - move to closest y edge
     case 6:
-      rotateStepper(&stepperY, refillPosition);
+      rotateStepper(&stepperX, refillPositionX);
+      rotateStepper(&stepperY, refillPositionY);
+
+      firstMoveCallFalseService();
 
       if (startButtonPressedChecker()) {
         doneRefillService();
-
       }
 
       break;
@@ -389,22 +417,37 @@ bool atTargetXYChecker(AccelStepper *stepperX, AccelStepper *stepperY) {
   return (!(stepperX->isRunning()) && !(stepperY->isRunning()));
 }
 
+bool firstMoveCallChecker() {
+  return firstMoveCall;
+}
+
 // Services
 void checkRefill() {
   int durationSum = 0;
-  
-  for (int i = 0; i < 10; ++i) {
+
+//  for (int i = 0; i < 10; ++i) {
+//    digitalWrite(trigPin, LOW);
+//    delayMicroseconds(2);
+//    digitalWrite(trigPin, HIGH);
+//    delayMicroseconds(10);
+//    digitalWrite(trigPin, LOW);
+//    int duration = pulseIn(echoPin, HIGH);
+//    durationSum += duration;
+//  }
+//
+//  float durationAvg = durationSum/10.0;
+//  Serial.println(durationAvg);
+
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
     digitalWrite(trigPin, HIGH);
     delayMicroseconds(10);
     digitalWrite(trigPin, LOW);
-    int duration = pulseIn(echoPin, HIGH);
-    durationSum += duration;
-  }
+    int durationAvg = pulseIn(echoPin, HIGH);
+    
+    Serial.print("========== Distance:  ");
+    Serial.println(durationAvg);
 
-  float durationAvg = durationSum/10.0;
-  Serial.println(durationAvg);
   if (durationAvg > refillThreshold) {
     stackNeedsRefill = true; 
   }
@@ -420,7 +463,10 @@ void calibrateStepper(AccelStepper *stepper) {
 }
 
 void rotateStepper(AccelStepper *stepper, int goal_position) {
-  stepper->moveTo(goal_position);
+  if(firstMoveCallChecker()) {
+    stepper->moveTo(goal_position);
+  }
+  
   stepper->run();
 }
 
@@ -429,9 +475,21 @@ void rotateServo(Servo *servo, int goal_angle) {
   servo->write(goal_angle);
 }
 
+void idleStateService() {
+  reachedLimitX = false;
+  reachedLimitY = false;
+}
+
+void calibrationRun() {
+  stepperX.run();
+  stepperY.run();
+}
 // E-Stop service
 void eStopService() {
+  reachedLimitX = false;
+  reachedLimitY = false;
   startButtonPressed = false;
+  firstMoveCall = true;
   state = 0;
 }
 
@@ -444,17 +502,19 @@ void pusherRotCompleteService() {
 void limitSwitchesReachedService() {
   reachedLimitX = false;
   reachedLimitY = false;
+  firstMoveCall = true;
   calibrateStepper(&stepperX);
   calibrateStepper(&stepperY);
   state = 2;
-  delayMicroseconds(1000000);
 }
 
 void atTargetXYService() {
   stepperX.stop();
   stepperY.stop();
-  delayMicroseconds(10000);
+  firstMoveCall = true;
+  servoRotComplete = false;
   state = 3;
+  timerRestart(timer);
 }
 
 void doneWithPatternService() {
@@ -464,8 +524,8 @@ void doneWithPatternService() {
 }
 
 void calibrationStateService() {
-  rotateStepper(&stepperX, calibrateMovePosition);
-  rotateStepper(&stepperY, calibrateMovePosition);
+  stepperX.moveTo(-MAX_X_steps - 10000);
+  stepperY.moveTo(-MAX_Y_steps - 10000);
 }
 
 void placerReturnCompleteService() {
@@ -482,10 +542,13 @@ void placerRotCompleteService() {
 
 void doneRefillService() {
   startButtonPressed = false;
+  firstMoveCall = true;
   state = 2;
 }
 
 void startPressedAtIdleService() {
+  reachedLimitX = false;
+  reachedLimitY = false;
   startButtonPressed = false;
   state = 1;
 }
@@ -524,4 +587,8 @@ void stackDoesNotNeedRefillService() {
 void errorStateOverService() {
   startButtonPressed = false;
   state = 0;
+}
+
+void firstMoveCallFalseService() {
+  firstMoveCall = false;
 }
