@@ -322,26 +322,13 @@ void loop() {
    
     // Refill - move to closest y edge
     case 6:
-      rotateStepper(&stepperX, refillPositionX);
-      rotateStepper(&stepperY, refillPositionY);
-
-      firstMoveCallFalseService();
+      refillService();
 
       if (startButtonPressedChecker()) {
         doneRefillService();
       }
 
       break;
-      
-    // Error state
-    case 7:
-      Serial.println("Error");
-      if (startButtonPressedChecker()){
-        errorStateOverService();
-
-      }
-      break;
-  }
 }
 
 ////////////////////////////////////////////////////////////
@@ -591,4 +578,11 @@ void errorStateOverService() {
 
 void firstMoveCallFalseService() {
   firstMoveCall = false;
+}
+
+void refillService() {
+  rotateStepper(stepperX, refillPositionX);
+  rotateStepper(stepperY, refillPositionY);
+  
+  firstMoveCallFalseService();
 }
